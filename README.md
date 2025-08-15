@@ -1,7 +1,7 @@
 # DRPS - Diverse Relevance Picking System
 
 **Author:** Rusin Danilo Olegovich  
-**Date:** 13.08.2025  
+**Date:** 15.08.2025  
 
 ## Repository
 

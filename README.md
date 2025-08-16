@@ -3,6 +3,10 @@
 **Author:** Rusin Danilo Olegovich  
 **Date:** 15.08.2025  
 
+## Repository
+
+[GitHub: drps](https://github.com/voltageddebunked/drps.git)
+
 ## Project Structure
 
 ```
@@ -19,8 +23,6 @@
 1. Clone the repository:
 ```bash
    git clone https://github.com/voltageddebunked/drps.git
-   # or
-   git clone https://github.com/aezisresearch/drps.git
    cd drps
 ```
 

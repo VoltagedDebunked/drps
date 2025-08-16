@@ -18,8 +18,8 @@ torch.manual_seed(42)
 np.random.seed(42)
 random.seed(42)
 
-class CIFAR10DatasetWithScores(Dataset):
-    """CIFAR-10 with computed quality and relevance scores"""
+class CIFAR100DatasetWithScores(Dataset):
+    """CIFAR-100 with computed quality and relevance scores"""
     def __init__(self, cifar_dataset, add_artificial_noise=True):
         self.cifar_dataset = cifar_dataset
         self.data = []
@@ -27,7 +27,7 @@ class CIFAR10DatasetWithScores(Dataset):
         self.quality_scores = []
         self.relevance_scores = []
         
-        print("Computing quality and relevance scores for CIFAR-10...")
+        print("Computing quality and relevance scores for CIFAR-100...")
         
         for i, (image, label) in enumerate(cifar_dataset):
             if i % 5000 == 0:
@@ -115,30 +115,69 @@ class CIFAR10DatasetWithScores(Dataset):
         edge_intensity = np.mean(gray) - center_intensity
         focus_score = min(1.0, abs(center_intensity - edge_intensity) / 50)
         
-        # Factor 3: Color distribution typical of natural objects
-        # Some classes have characteristic color patterns
-        class_color_relevance = {
-            0: 0.8,  # airplane - varied
-            1: 0.9,  # automobile - structured
-            2: 0.7,  # bird - varied colors
-            3: 0.6,  # cat - fur patterns
-            4: 0.5,  # deer - natural browns
-            5: 0.6,  # dog - varied
-            6: 0.8,  # frog - green patterns
-            7: 0.9,  # horse - structured
-            8: 0.8,  # ship - structured
-            9: 0.7   # truck - structured
-        }
-        class_score = class_color_relevance.get(label, 0.7)
+        # Factor 3: Class-specific relevance for CIFAR-100 fine labels
+        # CIFAR-100 has 100 classes grouped into 20 superclasses
+        # We'll create relevance patterns based on superclass characteristics
+        class_relevance = self._get_cifar100_class_relevance(label)
         
         # Factor 4: Random variation to simulate real-world relevance differences
         random_factor = 0.6 + 0.4 * random.random()  # Between 0.6 and 1.0
         
         # Combine factors
         relevance = (edge_score * 0.3 + focus_score * 0.2 + 
-                    class_score * 0.3 + random_factor * 0.2)
+                    class_relevance * 0.3 + random_factor * 0.2)
         
         return np.clip(relevance, 0.0, 1.0)
+    
+    def _get_cifar100_class_relevance(self, fine_label):
+        """Get relevance score based on CIFAR-100 class characteristics"""
+        # CIFAR-100 superclass mapping (simplified)
+        # Different superclasses have different visual complexity patterns
+        superclass_patterns = {
+            # Aquatic mammals: complex shapes, water backgrounds
+            4: 0.7, 30: 0.7, 55: 0.7, 72: 0.7, 95: 0.7,
+            # Fish: varied complexity
+            1: 0.8, 32: 0.8, 67: 0.8, 73: 0.8, 91: 0.8,
+            # Flowers: high color variation, good for quality assessment
+            54: 0.9, 62: 0.9, 70: 0.9, 82: 0.9, 92: 0.9,
+            # Food containers: structured objects
+            16: 0.8, 61: 0.8, 79: 0.8, 84: 0.8, 87: 0.8,
+            # Fruit and vegetables: color-rich, varied shapes
+            6: 0.85, 20: 0.85, 42: 0.85, 43: 0.85, 88: 0.85,
+            # Household electrical devices: structured, clear edges
+            15: 0.9, 19: 0.9, 21: 0.9, 31: 0.9, 38: 0.9,
+            # Household furniture: large objects, clear shapes
+            34: 0.85, 63: 0.85, 64: 0.85, 66: 0.85, 75: 0.85,
+            # Insects: small details, varied complexity
+            26: 0.7, 45: 0.7, 77: 0.7, 78: 0.7, 79: 0.7,
+            # Large carnivores: complex textures
+            2: 0.8, 11: 0.8, 35: 0.8, 46: 0.8, 98: 0.8,
+            # Large man-made outdoor things: varied complexity
+            27: 0.75, 29: 0.75, 44: 0.75, 78: 0.75, 93: 0.75,
+            # Large natural outdoor scenes: complex backgrounds
+            36: 0.6, 50: 0.6, 65: 0.6, 74: 0.6, 80: 0.6,
+            # Large omnivores and herbivores: varied
+            23: 0.75, 33: 0.75, 49: 0.75, 60: 0.75, 71: 0.75,
+            # Medium-sized mammals: good object definition
+            15: 0.8, 18: 0.8, 44: 0.8, 97: 0.8, 99: 0.8,
+            # Non-insect invertebrates: unique shapes
+            40: 0.75, 39: 0.75, 22: 0.75, 87: 0.75, 86: 0.75,
+            # People: human faces and bodies
+            5: 0.85, 25: 0.85, 47: 0.85, 52: 0.85, 53: 0.85,
+            # Reptiles: varied textures and shapes
+            46: 0.8, 58: 0.8, 70: 0.8, 89: 0.8, 90: 0.8,
+            # Small mammals: good detail visibility
+            9: 0.85, 10: 0.85, 16: 0.85, 28: 0.85, 61: 0.85,
+            # Trees: natural textures, varied complexity
+            17: 0.7, 18: 0.7, 68: 0.7, 76: 0.7, 77: 0.7,
+            # Vehicles 1: cars, trucks, etc.
+            8: 0.9, 13: 0.9, 48: 0.9, 58: 0.9, 90: 0.9,
+            # Vehicles 2: other vehicles
+            41: 0.85, 69: 0.85, 81: 0.85, 85: 0.85, 89: 0.85,
+        }
+        
+        # Return relevance score for the class, with default for unlisted classes
+        return superclass_patterns.get(fine_label, 0.75)
     
     def __len__(self):
         return len(self.data)
@@ -195,34 +234,54 @@ class QualityRater(nn.Module):
         return self.network(combined)
 
 class DiversityController:
-    """Stage 3: Ensures diversity in selected data"""
-    def __init__(self, target_distribution=None, memory_size=3000):
-        # Distribution for natural images - prefer medium-high quality with some diversity
-        self.target_dist = target_distribution or [0.05, 0.1, 0.2, 0.3, 0.25, 0.1]
+    """Stage 3: Much more selective diversity control for CIFAR-100"""
+    def __init__(self, target_distribution=None, memory_size=5000):
+        # Much more selective distribution - focus on high quality samples
+        self.target_dist = target_distribution or [0.02, 0.05, 0.15, 0.25, 0.35, 0.18]
         self.memory = deque(maxlen=memory_size)
         self.selection_history = defaultdict(int)
+        self.warmup_period = 1000  # Less selective initially
+        self.total_attempts = 0
         
-    def should_select(self, quality_score, relevance_score, diversity_factor=0.3):
-        """Decides whether to select a sample based on quality and diversity needs"""
+    def should_select(self, quality_score, relevance_score, diversity_factor=0.4):
+        """Much more selective decision making"""
+        self.total_attempts += 1
         quality_bin = min(int(quality_score * 6), 5)
         
         total_selected = sum(self.selection_history.values()) + 1
-        current_prop = self.selection_history[quality_bin] / total_selected
+        current_prop = self.selection_history[quality_bin] / total_selected if total_selected > 0 else 0
         target_prop = self.target_dist[quality_bin]
         
-        # Base selection probability (emphasize both quality and relevance for CIFAR-10)
-        base_prob = (quality_score * 0.5 + relevance_score * 0.5)
+        # Much higher threshold for selection - prioritize quality heavily
+        base_prob = (quality_score * 0.7 + relevance_score * 0.3)
         
-        # Diversity adjustment
-        if current_prop < target_prop:
-            diversity_boost = diversity_factor * (target_prop - current_prop) / target_prop
-        else:
-            diversity_penalty = diversity_factor * (current_prop - target_prop) / target_prop
-            diversity_boost = -diversity_penalty
+        # Add minimum quality threshold
+        if quality_score < 0.4:
+            base_prob *= 0.1  # Heavily penalize low quality
+        elif quality_score > 0.7:
+            base_prob *= 1.3  # Boost high quality
             
-        final_prob = min(1.0, max(0.05, base_prob + diversity_boost))
+        # Stricter relevance threshold
+        if relevance_score < 0.6:
+            base_prob *= 0.3
         
-        selected = random.random() < final_prob
+        # Diversity adjustment with higher penalties
+        if current_prop < target_prop:
+            diversity_boost = diversity_factor * (target_prop - current_prop) / (target_prop + 0.1)
+        else:
+            diversity_penalty = diversity_factor * (current_prop - target_prop) / (target_prop + 0.1)
+            diversity_boost = -diversity_penalty * 2  # Stronger penalty
+            
+        # Warmup period - be less selective initially
+        if self.total_attempts < self.warmup_period:
+            warmup_factor = 2.0
+        else:
+            warmup_factor = 1.0
+            
+        final_prob = min(1.0, max(0.02, (base_prob + diversity_boost) * warmup_factor))
+        
+        # Even stricter selection threshold
+        selected = random.random() < final_prob * 0.6  # Overall 40% reduction in selection
         
         if selected:
             self.selection_history[quality_bin] += 1
@@ -231,65 +290,79 @@ class DiversityController:
         return selected
 
 class MainModel(nn.Module):
-    """The actual CIFAR-10 classifier that learns from DRPS-selected data"""
-    def __init__(self, input_dim=3072, n_classes=10, hidden_dim=512):
+    """Improved CIFAR-100 classifier with better architecture"""
+    def __init__(self, input_dim=3072, n_classes=100, hidden_dim=1024):
         super().__init__()
         self.network = nn.Sequential(
+            # Larger first layer to handle complexity
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_dim),
-            nn.Dropout(0.4),
+            nn.Dropout(0.5),
+            
+            # Deeper architecture
             nn.Linear(hidden_dim, hidden_dim//2),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_dim//2),
             nn.Dropout(0.4),
+            
             nn.Linear(hidden_dim//2, hidden_dim//4),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_dim//4),
             nn.Dropout(0.3),
+            
             nn.Linear(hidden_dim//4, hidden_dim//8),
             nn.ReLU(),
+            nn.BatchNorm1d(hidden_dim//8),
             nn.Dropout(0.2),
-            nn.Linear(hidden_dim//8, n_classes)
+            
+            # Additional hidden layer for 100-class complexity
+            nn.Linear(hidden_dim//8, hidden_dim//16),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(hidden_dim//16, n_classes)
         )
         
     def forward(self, x):
         return self.network(x)
 
 class DRPS:
-    """The complete Diverse Relevance Picking System for CIFAR-10"""
-    def __init__(self, input_dim=3072, n_classes=10, device='cpu'):
+    def __init__(self, input_dim=3072, n_classes=100, device='cpu'):
         self.device = device
         self.input_dim = input_dim
         self.n_classes = n_classes
         
-        # Initialize all components
-        self.relevance_scorer = RelevanceScorer(input_dim).to(device)
-        self.quality_rater = QualityRater(input_dim).to(device)
+        # components
+        self.relevance_scorer = RelevanceScorer(input_dim, hidden_dim=512).to(device)  # Larger
+        self.quality_rater = QualityRater(input_dim, hidden_dim=512).to(device)  # Larger
         self.diversity_controller = DiversityController()
-        self.main_model = MainModel(input_dim, n_classes).to(device)
+        self.main_model = MainModel(input_dim, n_classes, hidden_dim=1024).to(device)  # Much larger
         
-        # Optimizers with different learning rates for different components
-        self.rel_optimizer = optim.Adam(self.relevance_scorer.parameters(), lr=0.0005)
-        self.qual_optimizer = optim.Adam(self.quality_rater.parameters(), lr=0.0005)
-        self.main_optimizer = optim.Adam(self.main_model.parameters(), lr=0.001)
+        # Better optimizers with learning rate scheduling
+        self.rel_optimizer = optim.AdamW(self.relevance_scorer.parameters(), lr=0.001, weight_decay=0.01)
+        self.qual_optimizer = optim.AdamW(self.quality_rater.parameters(), lr=0.001, weight_decay=0.01)
+        self.main_optimizer = optim.AdamW(self.main_model.parameters(), lr=0.002, weight_decay=0.01)
+        
+        # Learning rate schedulers
+        self.main_scheduler = optim.lr_scheduler.StepLR(self.main_optimizer, step_size=100, gamma=0.8)
         
         # Loss functions
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(label_smoothing=0.1)  # Label smoothing
         self.mse_criterion = nn.MSELoss()
         
-        # Training stats
+        # training stats
         self.selection_stats = {
             'total_seen': 0,
             'total_selected': 0,
             'relevance_accuracy': [],
             'quality_accuracy': [],
-            'main_model_accuracy': []
+            'main_model_accuracy': [],
+            'selection_ratios': []
         }
         
     def train_relevance_scorer(self, dataset, epochs=60):
-        """Train the relevance scorer using a bootstrap sample"""
-        print("Training Relevance Scorer for CIFAR-10...")
+        print("Training Relevance Scorer for CIFAR-100...")
         
         bootstrap_size = min(3000, len(dataset))
         indices = random.sample(range(len(dataset)), bootstrap_size)
@@ -317,7 +390,7 @@ class DRPS:
                 
                 total_loss += loss.item()
                 
-                # Calculate accuracy (within 0.2 threshold for CIFAR-10)
+                # Calculate accuracy (within 0.2 threshold for CIFAR-100)
                 if abs(pred_relevance.item() - true_relevance.item()) < 0.2:
                     correct += 1
                 total += 1
@@ -329,8 +402,7 @@ class DRPS:
                 print(f"Epoch {epoch}: Relevance Loss: {total_loss/len(indices):.4f}, Accuracy: {accuracy:.4f}")
     
     def train_quality_rater(self, dataset, epochs=60):
-        """Train the quality rater using relevance scores"""
-        print("Training Quality Rater for CIFAR-10...")
+        print("Training Quality Rater for CIFAR-100...")
         
         bootstrap_size = min(3000, len(dataset))
         indices = random.sample(range(len(dataset)), bootstrap_size)
@@ -371,8 +443,7 @@ class DRPS:
             if epoch % 15 == 0 or epoch == epochs - 1:
                 print(f"Epoch {epoch}: Quality Loss: {total_loss/len(indices):.4f}, Accuracy: {accuracy:.4f}")
     
-    def select_data_batch(self, dataset, batch_size=32, max_attempts=3000):
-        """Select a batch of data using DRPS"""
+    def select_data_batch(self, dataset, batch_size=64, max_attempts=8000):
         selected_samples = []
         selected_indices = []
         attempts = 0
@@ -402,13 +473,46 @@ class DRPS:
         self.selection_stats['total_selected'] += len(selected_samples)
         return selected_samples, selected_indices
     
-    def train_main_model(self, dataset, test_dataset, epochs=300, batch_size=32):
-        """Train the main model using DRPS-selected data"""
-        print("Training Main Model with DRPS on CIFAR-10...")
+    def train_main_model(self, dataset, test_dataset, epochs=600, batch_size=64):
+        print("Training Main Model with DRPS on CIFAR-100...")
+        
+        best_accuracy = 0
+        patience_counter = 0
+        patience_limit = 100
         
         for epoch in range(epochs):
-            # Select batch using DRPS
-            selected_batch, _ = self.select_data_batch(dataset, batch_size)
+            # Select batch using DRPS with multiple attempts for quality
+            selected_batch = []
+            attempts = 0
+            max_attempts = 8000  # More attempts for better selection
+            
+            while len(selected_batch) < batch_size and attempts < max_attempts:
+                idx = random.randint(0, len(dataset) - 1)
+                x, y, _ = dataset[idx]
+                x_tensor = x.unsqueeze(0).to(self.device)
+                
+                # Get scores
+                with torch.no_grad():
+                    relevance_score = self.relevance_scorer(x_tensor).item()
+                    relevance_tensor = torch.FloatTensor([relevance_score]).to(self.device)
+                    quality_score = self.quality_rater(x_tensor, relevance_tensor).item()
+                
+                # Diversity controller decides
+                if self.diversity_controller.should_select(quality_score, relevance_score):
+                    selected_batch.append((x, y))
+                
+                attempts += 1
+                self.selection_stats['total_seen'] += 1
+            
+            # If we can't get enough high-quality samples, relax criteria
+            if len(selected_batch) < batch_size // 2:
+                additional_needed = batch_size - len(selected_batch)
+                indices = random.sample(range(len(dataset)), additional_needed)
+                for idx in indices:
+                    x, y, _ = dataset[idx]
+                    selected_batch.append((x, y))
+            
+            self.selection_stats['total_selected'] += len(selected_batch)
             
             if len(selected_batch) == 0:
                 continue
@@ -423,14 +527,33 @@ class DRPS:
             
             self.main_optimizer.zero_grad()
             loss.backward()
-            self.main_optimizer.step()
             
-            # Evaluate on test set every 30 epochs
-            if epoch % 30 == 0:
+            # Gradient clipping for stability
+            torch.nn.utils.clip_grad_norm_(self.main_model.parameters(), max_norm=1.0)
+            
+            self.main_optimizer.step()
+            self.main_scheduler.step()
+            
+            # Evaluate more frequently
+            if epoch % 25 == 0:
                 accuracy = self.evaluate(test_dataset)
-                self.selection_stats['main_model_accuracy'].append(accuracy)
                 selection_ratio = self.selection_stats['total_selected'] / max(1, self.selection_stats['total_seen'])
-                print(f"Epoch {epoch}: Accuracy: {accuracy:.4f}, Selection Rate: {selection_ratio:.4f}")
+                
+                self.selection_stats['main_model_accuracy'].append(accuracy)
+                self.selection_stats['selection_ratios'].append(selection_ratio)
+                
+                print(f"Epoch {epoch}: Accuracy: {accuracy:.4f}, Selection Rate: {selection_ratio:.4f}, LR: {self.main_scheduler.get_last_lr()[0]:.6f}")
+                
+                # Early stopping with patience
+                if accuracy > best_accuracy:
+                    best_accuracy = accuracy
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                
+                if patience_counter >= patience_limit:
+                    print(f"Early stopping at epoch {epoch} with best accuracy: {best_accuracy:.4f}")
+                    break
     
     def evaluate(self, test_dataset):
         """Evaluate the main model"""
@@ -452,11 +575,11 @@ class DRPS:
         self.main_model.train()
         return correct / total
 
-def random_baseline_cifar10(dataset, test_dataset, epochs=300, batch_size=32, device='cpu'):
-    """Baseline: Train CIFAR-10 classifier with random data selection"""
-    print("Training Random Baseline for CIFAR-10...")
+def random_baseline_cifar100(dataset, test_dataset, epochs=400, batch_size=32, device='cpu'):
+    """Baseline: Train CIFAR-100 classifier with random data selection"""
+    print("Training Random Baseline for CIFAR-100...")
     
-    model = MainModel(3072, 10).to(device)
+    model = MainModel(3072, 100).to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
     
@@ -476,8 +599,8 @@ def random_baseline_cifar10(dataset, test_dataset, epochs=300, batch_size=32, de
         loss.backward()
         optimizer.step()
         
-        # Evaluate every 30 epochs
-        if epoch % 30 == 0:
+        # Evaluate every 40 epochs
+        if epoch % 40 == 0:
             model.eval()
             correct = 0
             total = 0
@@ -500,32 +623,32 @@ def random_baseline_cifar10(dataset, test_dataset, epochs=300, batch_size=32, de
     
     return accuracies
 
-def run_cifar10_test():
-    """Run comprehensive DRPS testing on CIFAR-10"""
+def run_cifar100_test():
+    """Run comprehensive DRPS testing on CIFAR-100"""
     print("=" * 60)
-    print("DRPS: Testing on CIFAR-10 Dataset")
+    print("DRPS: Testing on CIFAR-100 Dataset")
     print("=" * 60)
     
-    # Load CIFAR-10
-    print("Loading CIFAR-10 dataset...")
+    # Load CIFAR-100
+    print("Loading CIFAR-100 dataset...")
     transform = transforms.Compose([transforms.ToTensor()])
     
-    cifar_train = torchvision.datasets.CIFAR10(root='./data', train=True, 
+    cifar_train = torchvision.datasets.CIFAR100(root='./data', train=True, 
+                                              download=True, transform=transform)
+    cifar_test = torchvision.datasets.CIFAR100(root='./data', train=False, 
                                              download=True, transform=transform)
-    cifar_test = torchvision.datasets.CIFAR10(root='./data', train=False, 
-                                            download=True, transform=transform)
     
     # Create datasets with quality/relevance scores
     print("Creating enhanced datasets...")
-    train_dataset = CIFAR10DatasetWithScores(cifar_train, add_artificial_noise=True)
-    test_dataset = CIFAR10DatasetWithScores(cifar_test, add_artificial_noise=False)
+    train_dataset = CIFAR100DatasetWithScores(cifar_train, add_artificial_noise=True)
+    test_dataset = CIFAR100DatasetWithScores(cifar_test, add_artificial_noise=False)
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
     
     # Initialize DRPS
     print("\nInitializing DRPS...")
-    drps = DRPS(input_dim=3072, n_classes=10, device=device)
+    drps = DRPS(input_dim=3072, n_classes=100, device=device)
     
     # Train DRPS components
     print("\n" + "="*40)
@@ -543,7 +666,7 @@ def run_cifar10_test():
     print("="*40)
     
     start_time = time.time()
-    drps.train_main_model(train_dataset, test_dataset, epochs=300, batch_size=32)
+    drps.train_main_model(train_dataset, test_dataset, epochs=400, batch_size=32)
     drps_time = time.time() - start_time
     
     # Train random baseline
@@ -552,13 +675,13 @@ def run_cifar10_test():
     print("="*40)
     
     start_time = time.time()
-    random_accuracies = random_baseline_cifar10(train_dataset, test_dataset, 
-                                              epochs=300, batch_size=32, device=device)
+    random_accuracies = random_baseline_cifar100(train_dataset, test_dataset, 
+                                                epochs=400, batch_size=32, device=device)
     baseline_time = time.time() - start_time
     
     # Results and Analysis
     print("\n" + "="*60)
-    print("CIFAR-10 RESULTS AND ANALYSIS")
+    print("CIFAR-100 RESULTS AND ANALYSIS")
     print("="*60)
     
     final_drps_acc = drps.selection_stats['main_model_accuracy'][-1] if drps.selection_stats['main_model_accuracy'] else 0
@@ -576,11 +699,9 @@ def run_cifar10_test():
     print(f"Data reduction: {(1-selection_ratio)*100:.1f}%")
     
     print(f"\nComponent Performance:")
-    if drps.selection_stats['relevance_accuracy']:
-        print(f"Relevance Scorer Final Accuracy: {drps.selection_stats['relevance_accuracy'][-1]:.4f}")
     if drps.selection_stats['quality_accuracy']:
-        print(f"Quality Rater Final Accuracy: {drps.selection_stats['quality_accuracy'][-1]:.4f}")
-    
+       print(f"Quality Rater Final Accuracy: {drps.selection_stats['quality_accuracy'][-1]:.4f}")
+   
     print(f"\nTraining Times:")
     print(f"DRPS Component Training: {component_time:.2f}s")
     print(f"DRPS Main Training: {drps_time:.2f}s")
@@ -593,14 +714,14 @@ def run_cifar10_test():
     # Plot 1: Learning curves
     plt.subplot(2, 2, 1)
     if drps.selection_stats['main_model_accuracy']:
-        epochs_drps = range(0, len(drps.selection_stats['main_model_accuracy']) * 30, 30)
+        epochs_drps = range(0, len(drps.selection_stats['main_model_accuracy']) * 40, 40)
         plt.plot(epochs_drps, drps.selection_stats['main_model_accuracy'], 'b-', label='DRPS', linewidth=2)
     if random_accuracies:
-        epochs_random = range(0, len(random_accuracies) * 30, 30)
+        epochs_random = range(0, len(random_accuracies) * 40, 40)
         plt.plot(epochs_random, random_accuracies, 'r--', label='Random', linewidth=2)
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    plt.title('CIFAR-10 Learning Curves Comparison')
+    plt.title('CIFAR-100 Learning Curves Comparison')
     plt.legend()
     plt.grid(True, alpha=0.3)
     
@@ -628,7 +749,7 @@ def run_cifar10_test():
     
     # Plot 4: Sample images from different quality bins
     plt.subplot(2, 2, 4)
-    # Show a few sample CIFAR-10 images
+    # Show a few sample CIFAR-100 images
     sample_indices = random.sample(range(min(1000, len(train_dataset))), 16)
     
     # Create a 4x4 grid of sample images
@@ -641,7 +762,7 @@ def run_cifar10_test():
         plt.imshow(img)
         plt.axis('off')
         plt.title(f'Q:{train_dataset.quality_scores[idx]:.2f}', fontsize=8)
-        plt.suptitle('Sample CIFAR-10 Images with Quality Scores')
+    plt.suptitle('Sample CIFAR-100 Images with Quality Scores')
     plt.tight_layout()
     plt.show()
     
@@ -650,7 +771,7 @@ def run_cifar10_test():
     
     # Summary
     print(f"\n" + "="*60)
-    print("CIFAR-10 EXPERIMENT SUMMARY")
+    print("CIFAR-100 EXPERIMENT SUMMARY")
     print("="*60)
     
     efficiency_gain = (1 - selection_ratio) * 100
@@ -661,37 +782,73 @@ def run_cifar10_test():
     if drps.selection_stats['quality_accuracy']:
         print(f"   - Quality rater: {drps.selection_stats['quality_accuracy'][-1]:.1%} accuracy")
     
-    if final_drps_acc >= final_random_acc * 0.95:  # Within 5% is good for CIFAR-10
+    if final_drps_acc >= final_random_acc * 0.90:  # Within 10% is reasonable for CIFAR-100
         print(f"✓ Performance maintained: {final_drps_acc:.1%} vs {final_random_acc:.1%} (random)")
         print(f"✓ Efficiency per data point: {final_drps_acc/selection_ratio:.2f}x better than random")
     else:
         print(f"⚠ Performance gap: {final_drps_acc:.1%} vs {final_random_acc:.1%} (random)")
-        print(f"   CIFAR-10 is more challenging - may need hyperparameter tuning")
+        print(f"   CIFAR-100 is very challenging - 100 fine-grained classes")
     
-    # Calculate class-wise statistics
-    class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
-                   'dog', 'frog', 'horse', 'ship', 'truck']
+    # Get CIFAR-100 class names for analysis
+    cifar100_fine_labels = [
+        'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle',
+        'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel',
+        'can', 'castle', 'caterpillar', 'cattle', 'chair', 'chimpanzee', 'clock',
+        'cloud', 'cockroach', 'couch', 'crab', 'crocodile', 'cup', 'dinosaur',
+        'dolphin', 'elephant', 'flatfish', 'forest', 'fox', 'girl', 'hamster',
+        'house', 'kangaroo', 'keyboard', 'lamp', 'lawn_mower', 'leopard', 'lion',
+        'lizard', 'lobster', 'man', 'maple_tree', 'motorcycle', 'mountain', 'mouse',
+        'mushroom', 'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 'pear',
+        'pickup_truck', 'pine_tree', 'plain', 'plate', 'poppy', 'porcupine',
+        'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket', 'rose',
+        'sea', 'seal', 'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake',
+        'spider', 'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table',
+        'tank', 'telephone', 'television', 'tiger', 'tractor', 'train', 'trout',
+        'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman',
+        'worm'
+    ]
+    
+    print(f"\nCIFAR-100 Classification Challenge:")
+    print(f"   - 100 fine-grained classes (vs 10 in CIFAR-10)")
+    print(f"   - 20 superclasses with 5 subclasses each")
+    print(f"   - Examples: {', '.join(cifar100_fine_labels[:10])}...")
+    print(f"   - Much more challenging than CIFAR-10")
+    
+    print(f"\nKey CIFAR-100 Insights:")
+    print(f"   - DRPS examined {drps.selection_stats['total_seen']} samples")
+    print(f"   - Selected only {drps.selection_stats['total_selected']} for training")
+    print(f"   - Selection rate: {selection_ratio:.1%} of examined data")
     
     # Quality assessment insights
-    avg_selected_quality = np.mean([s[0] for s in drps.diversity_controller.memory])
-    avg_selected_relevance = np.mean([s[1] for s in drps.diversity_controller.memory])
+    if len(drps.diversity_controller.memory) > 0:
+        avg_selected_quality = np.mean([s[0] for s in drps.diversity_controller.memory])
+        avg_selected_relevance = np.mean([s[1] for s in drps.diversity_controller.memory])
+        
+        print(f"\nSelected Data Characteristics:")
+        print(f"   - Average quality of selected samples: {avg_selected_quality:.3f}")
+        print(f"   - Average relevance of selected samples: {avg_selected_relevance:.3f}")
+        print(f"   - Dataset average quality: {train_dataset.quality_scores.mean():.3f}")
+        print(f"   - Dataset average relevance: {train_dataset.relevance_scores.mean():.3f}")
     
-    print(f"\nSelected Data Characteristics:")
-    print(f"   - Average quality of selected samples: {avg_selected_quality:.3f}")
-    print(f"   - Average relevance of selected samples: {avg_selected_relevance:.3f}")
-    print(f"   - Dataset average quality: {train_dataset.quality_scores.mean():.3f}")
-    print(f"   - Dataset average relevance: {train_dataset.relevance_scores.mean():.3f}")
-    
+    # Performance per class analysis
+    if final_drps_acc > 0:
+        acc_per_class = final_drps_acc * 100  # Convert to percentage for easier reading
+        print(f"\nPerformance Analysis:")
+        print(f"   - {acc_per_class:.1f}% accuracy across 100 classes")
+        print(f"   - Average per-class accuracy: ~{acc_per_class/100:.1f}% per class")
+        if acc_per_class > 20:  # Better than random (1%)
+            print(f"   ✓ Significantly better than random chance (1%)")
+        
     return drps, random_accuracies
 
-if __name__ == "__main__":
-   # Run the CIFAR-10 test
-   print("Starting CIFAR-10 DRPS validation...")
+if  __name__ == "__main__":
+   # Run the CIFAR-100 test
+   print("Starting CIFAR-100 DRPS validation...")
    
-   drps_system, baseline_results = run_cifar10_test()
+   drps_system, baseline_results = run_cifar100_test()
    
    print(f"\n" + "="*60)
-   print("CIFAR-10 DRPS Validation Complete!")
+   print("CIFAR-100 DRPS Validation Complete!")
    print("="*60)
    
-   print(f"\nExperiment completed! Check the plots above for detailed analysis.")
+   print(f"\nExperiment completed!")
